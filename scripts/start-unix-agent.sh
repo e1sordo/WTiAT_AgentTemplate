@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Prompt exapmle:
+# Prompt example:
 # ./start-unix-agent.sh --name="Agent 1" [--id="923420103"]
 
 readonly COMMON_CONFIG_FILE=conf/common-config.conf
@@ -94,6 +94,7 @@ log_file_path=$(echo "$agent_dir/$log_file_name" | sed 's_/_\\/_g')
 sed -e "s/\${app_name}/${agent_name}/" -e "s/\${app_long_name}/${agent_full_name}/" \
   -e "s/\${app_description}/Agent name: ${agent_name}, Agent ID: ${agent_id}/" \
   -e "s/\${log_file_path}/${log_file_path}/" \
+  -e "s/\${agent_name}/${agent_name}/" -e "s/\${agent_id}/${agent_id}/" \
   $COMMON_CONFIG_FILE >$config_file
 chmod 644 $config_file
 chown $MAIN_USER:$MAIN_GROUP $config_file
