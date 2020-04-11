@@ -2,12 +2,19 @@ package es.e1sordo.thesis.wtiat.agent;
 
 import es.e1sordo.thesis.wtiat.agent.client.AgentHttpClient;
 import es.e1sordo.thesis.wtiat.agent.dto.AgentPostDto;
+import es.e1sordo.thesis.wtiat.agent.dto.DeviceGetDto;
 import es.e1sordo.thesis.wtiat.agent.exceptions.TerminateException;
+import es.e1sordo.thesis.wtiat.agent.threads.MetricsBatchSender;
+import es.e1sordo.thesis.wtiat.agent.threads.MetricsCollector;
 import es.e1sordo.thesis.wtiat.agent.util.SystemInfoReceiver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.*;
+
+import static java.util.Optional.ofNullable;
 
 public class Agent {
 
@@ -15,7 +22,14 @@ public class Agent {
 
     private String name;
     private String id;
+    private String assignedDeviceId;
     private AgentHttpClient client;
+    private ScheduledExecutorService executorService;
+    private ScheduledFuture<?> scheduledGatheringFuture;
+    private ScheduledFuture<?> scheduledBatchFuture;
+
+    private ConcurrentLinkedQueue<Map<String, String>> metricsQueue;
+
     private boolean isRegistered;
 
     public Agent(String name, String id) {
@@ -24,6 +38,18 @@ public class Agent {
         this.name = name;
         this.id = id;
         this.client = new AgentHttpClient();
+
+        final var daemonThreadFactory = new ThreadFactory() {
+            public Thread newThread(Runnable r) {
+                Thread t = Executors.defaultThreadFactory().newThread(r);
+                t.setDaemon(true);
+                return t;
+            }
+        };
+
+        this.executorService = Executors.newScheduledThreadPool(2, daemonThreadFactory);
+
+        metricsQueue = new ConcurrentLinkedQueue<>();
     }
 
     private void exchange() {
@@ -47,6 +73,31 @@ public class Agent {
             this.id = idFromDb;
         }
 
+        final var newAssignedDeviceId = response.getAssignedDeviceId();
+        if (!Objects.equals(this.assignedDeviceId, newAssignedDeviceId)) {
+            this.assignedDeviceId = newAssignedDeviceId;
+            ofNullable(scheduledGatheringFuture).ifPresent(future -> future.cancel(true));
+            ofNullable(scheduledBatchFuture).ifPresent(future -> future.cancel(true));
+            if (newAssignedDeviceId != null) {
+
+                DeviceGetDto device = client.getDeviceById(newAssignedDeviceId);
+
+                scheduledGatheringFuture = executorService.scheduleAtFixedRate(
+                    new MetricsCollector(metricsQueue),
+                        0,
+                        device.getGatheringFrequencyInMillis(),
+                        TimeUnit.MILLISECONDS
+                );
+
+                scheduledBatchFuture = executorService.scheduleAtFixedRate(
+                        new MetricsBatchSender(client, metricsQueue),
+                        0,
+                        device.getBatchSendingFrequencyInMillis(),
+                        TimeUnit.MILLISECONDS
+                );
+            }
+        }
+
         if (response.getShouldTerminate()) {
             throw new TerminateException("The server initiated the agent's shutdown.");
         }
@@ -59,9 +110,7 @@ public class Agent {
         final var id = args.length > 1 ? args[1] : "";
         final var instance = new Agent(name, id);
 
-
         while (true) {
-
             instance.exchange();
 
             try {
