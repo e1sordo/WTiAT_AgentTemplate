@@ -7,7 +7,7 @@ public class AgentGetDto {
     private String ip;
     private Integer pid;
     private String registerDate;
-    private String assignedDeviceId;
+    private DeviceGetDto assignedDevice;
     private String assignedDate;
     private Boolean shouldTerminate;
 
@@ -51,12 +51,12 @@ public class AgentGetDto {
         this.registerDate = registerDate;
     }
 
-    public String getAssignedDeviceId() {
-        return assignedDeviceId;
+    public DeviceGetDto getAssignedDevice() {
+        return assignedDevice;
     }
 
-    public void setAssignedDeviceId(String assignedDeviceId) {
-        this.assignedDeviceId = assignedDeviceId;
+    public void setAssignedDevice(DeviceGetDto assignedDevice) {
+        this.assignedDevice = assignedDevice;
     }
 
     public String getAssignedDate() {

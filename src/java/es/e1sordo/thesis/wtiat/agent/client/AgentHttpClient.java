@@ -43,33 +43,6 @@ public class AgentHttpClient {
         httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-
-
-    public DeviceGetDto getDeviceById(String id) {
-        var gatewayInfo = GatewayProperties.getActualData();
-
-        logger.debug("Protocol: " + gatewayInfo.getProtocol());
-        logger.debug("Host: " + gatewayInfo.getHost());
-        logger.debug("Port: " + gatewayInfo.getPort());
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .GET()
-                .uri(URI.create(String.format("%s://%s:%s/rest/devices/%s",
-                        gatewayInfo.getProtocol(), gatewayInfo.getHost(), gatewayInfo.getPort(), id)))
-                .build();
-
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            String responseBody = response.body();
-            logger.info("Response: \n{}", responseBody);
-            return gson.fromJson(responseBody, DeviceGetDto.class);
-        } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
-            return null; // todo: нельзя возвращать null
-        }
-    }
-
-
     public List<AgentGetDto> sendGet(GatewayInfo gateway) throws IOException, InterruptedException {
 
         HttpRequest request = HttpRequest.newBuilder()

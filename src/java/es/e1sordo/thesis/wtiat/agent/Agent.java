@@ -22,7 +22,7 @@ public class Agent {
 
     private String name;
     private String id;
-    private String assignedDeviceId;
+    private DeviceGetDto assignedDevice;
     private AgentHttpClient client;
     private ScheduledExecutorService executorService;
     private ScheduledFuture<?> scheduledGatheringFuture;
@@ -50,6 +50,12 @@ public class Agent {
         this.executorService = Executors.newScheduledThreadPool(2, daemonThreadFactory);
 
         metricsQueue = new ConcurrentLinkedQueue<>();
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            logger.info("Try to close executor service...");
+            cancelFutures(scheduledGatheringFuture, scheduledBatchFuture);
+            this.executorService.shutdown();
+        }));
     }
 
     private void exchange() {
@@ -73,33 +79,41 @@ public class Agent {
             this.id = idFromDb;
         }
 
-        final var newAssignedDeviceId = response.getAssignedDeviceId();
-        if (!Objects.equals(this.assignedDeviceId, newAssignedDeviceId)) {
-            this.assignedDeviceId = newAssignedDeviceId;
-            ofNullable(scheduledGatheringFuture).ifPresent(future -> future.cancel(true));
-            ofNullable(scheduledBatchFuture).ifPresent(future -> future.cancel(true));
-            if (newAssignedDeviceId != null) {
+        final var newAssignedDevice = response.getAssignedDevice();
 
-                DeviceGetDto device = client.getDeviceById(newAssignedDeviceId);
-
-                scheduledGatheringFuture = executorService.scheduleAtFixedRate(
-                    new MetricsCollector(metricsQueue),
-                        0,
-                        device.getGatheringFrequencyInMillis(),
-                        TimeUnit.MILLISECONDS
-                );
-
-                scheduledBatchFuture = executorService.scheduleAtFixedRate(
-                        new MetricsBatchSender(client, metricsQueue),
-                        0,
-                        device.getBatchSendingFrequencyInMillis(),
-                        TimeUnit.MILLISECONDS
-                );
+        if (!Objects.equals(this.assignedDevice, newAssignedDevice)) {
+            this.assignedDevice = newAssignedDevice;
+            cancelFutures(scheduledGatheringFuture, scheduledBatchFuture);
+            if (assignedDevice != null) {
+                scheduledGatheringFuture = scheduleGatheringTask(assignedDevice.getGatheringFrequencyInMillis());
+                scheduledBatchFuture = scheduleBatchTask(assignedDevice.getBatchSendingFrequencyInMillis());
             }
         }
 
         if (response.getShouldTerminate()) {
             throw new TerminateException("The server initiated the agent's shutdown.");
+        }
+    }
+
+    private ScheduledFuture<?> scheduleBatchTask(Integer frequencyPeriodInMillis) {
+        return executorService.scheduleAtFixedRate(
+                new MetricsBatchSender(client, metricsQueue),
+                0,
+                frequencyPeriodInMillis,
+                TimeUnit.MILLISECONDS);
+    }
+
+    private ScheduledFuture<?> scheduleGatheringTask(Integer frequencyPeriodInMillis) {
+        return executorService.scheduleAtFixedRate(
+                new MetricsCollector(metricsQueue),
+                0,
+                frequencyPeriodInMillis,
+                TimeUnit.MILLISECONDS);
+    }
+
+    private void cancelFutures(ScheduledFuture<?>... futures) {
+        for (ScheduledFuture<?> future : futures) {
+            ofNullable(future).ifPresent(it -> it.cancel(true));
         }
     }
 

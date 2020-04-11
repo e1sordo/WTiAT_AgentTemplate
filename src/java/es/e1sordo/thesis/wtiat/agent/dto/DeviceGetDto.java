@@ -1,6 +1,7 @@
 package es.e1sordo.thesis.wtiat.agent.dto;
 
 import java.util.List;
+import java.util.Objects;
 
 public class DeviceGetDto {
 
@@ -66,5 +67,27 @@ public class DeviceGetDto {
 
     public void setMetrics(List<List<String>> metrics) {
         this.metrics = metrics;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        DeviceGetDto that = (DeviceGetDto) o;
+        return getId().equals(that.getId()) &&
+                getName().equals(that.getName()) &&
+                getConnectorName().equals(that.getConnectorName()) &&
+                getGatheringFrequencyInMillis().equals(that.getGatheringFrequencyInMillis()) &&
+                getBatchSendingFrequencyInMillis().equals(that.getBatchSendingFrequencyInMillis()) &&
+                Objects.equals(getConnectionValues(), that.getConnectionValues()) &&
+                Objects.equals(getMetrics(), that.getMetrics());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+                getId(), getName(), getConnectorName(), getGatheringFrequencyInMillis(),
+                getBatchSendingFrequencyInMillis(), getConnectionValues(), getMetrics()
+        );
     }
 }
