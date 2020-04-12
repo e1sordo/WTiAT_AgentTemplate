@@ -6,10 +6,16 @@ import es.e1sordo.thesis.wtiat.agent.dto.DeviceGetDto;
 import es.e1sordo.thesis.wtiat.agent.exceptions.TerminateException;
 import es.e1sordo.thesis.wtiat.agent.threads.MetricsBatchSender;
 import es.e1sordo.thesis.wtiat.agent.threads.MetricsCollector;
+import es.e1sordo.thesis.wtiat.agent.util.ConnectorLoader;
 import es.e1sordo.thesis.wtiat.agent.util.SystemInfoReceiver;
+import es.e1sordo.thesis.wtiat.lib.ElectronicDevice;
+import es.e1sordo.thesis.wtiat.lib.FailedConnectionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.lang.reflect.InvocationTargetException;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.*;
@@ -23,12 +29,15 @@ public class Agent {
     private String name;
     private String id;
     private DeviceGetDto assignedDevice;
+    private String currentLoadedConnectorName;
+    private ElectronicDevice device;
+
     private AgentHttpClient client;
     private ScheduledExecutorService executorService;
     private ScheduledFuture<?> scheduledGatheringFuture;
     private ScheduledFuture<?> scheduledBatchFuture;
 
-    private ConcurrentLinkedQueue<Map<String, String>> metricsQueue;
+    private ConcurrentLinkedQueue<Map<String, List<Object>>> metricsQueue;
 
     private boolean isRegistered;
 
@@ -52,6 +61,8 @@ public class Agent {
         metricsQueue = new ConcurrentLinkedQueue<>();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            logger.info("Try to close device connection...");
+            if (device != null && device.isConnected()) device.disconnect();
             logger.info("Try to close executor service...");
             cancelFutures(scheduledGatheringFuture, scheduledBatchFuture);
             this.executorService.shutdown();
@@ -84,9 +95,34 @@ public class Agent {
         if (!Objects.equals(this.assignedDevice, newAssignedDevice)) {
             this.assignedDevice = newAssignedDevice;
             cancelFutures(scheduledGatheringFuture, scheduledBatchFuture);
+
             if (assignedDevice != null) {
-                scheduledGatheringFuture = scheduleGatheringTask(assignedDevice.getGatheringFrequencyInMillis());
-                scheduledBatchFuture = scheduleBatchTask(assignedDevice.getBatchSendingFrequencyInMillis());
+                if (!Objects.equals(this.currentLoadedConnectorName, assignedDevice.getConnectorName())) {
+                    logger.info("Connector were changed since now");
+                    this.currentLoadedConnectorName = assignedDevice.getConnectorName();
+                }
+
+                if (currentLoadedConnectorName != null) {
+                    final var connectorJarFile = client.downloadConnector(currentLoadedConnectorName);
+                    device = loadDeviceConnector(connectorJarFile, assignedDevice.getConnectionValues());
+                }
+
+                if (device != null) {
+                    logger.info("Connector for device {} was successfully loaded", assignedDevice.getName());
+                    try {
+                        device.connect();
+
+                        scheduledGatheringFuture = scheduleGatheringTask(device,
+                                assignedDevice.getMetrics(),
+                                assignedDevice.getGatheringFrequencyInMillis());
+
+                        scheduledBatchFuture = scheduleBatchTask(assignedDevice.getBatchSendingFrequencyInMillis());
+                    } catch (FailedConnectionException e) {
+                        logger.error("Unable to connect to device", e);
+                    }
+                }
+            } else {
+                if (device != null && device.isConnected()) device.disconnect();
             }
         }
 
@@ -95,17 +131,32 @@ public class Agent {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private ElectronicDevice loadDeviceConnector(File connectorJarFile, List<String> connectionValues) {
+        Class mainClass = ConnectorLoader.loadJarAndGetMainClass(connectorJarFile);
+
+        if (mainClass != null) {
+            try {
+                return (ElectronicDevice) mainClass.getDeclaredConstructor(List.class).newInstance(connectionValues);
+            } catch (InstantiationException | NoSuchMethodException | InvocationTargetException | IllegalAccessException ex) {
+                logger.error("An error occurred while loading the connector " + connectorJarFile, ex);
+            }
+        }
+        return null;
+    }
+
     private ScheduledFuture<?> scheduleBatchTask(Integer frequencyPeriodInMillis) {
         return executorService.scheduleAtFixedRate(
                 new MetricsBatchSender(client, metricsQueue),
-                0,
+                frequencyPeriodInMillis,
                 frequencyPeriodInMillis,
                 TimeUnit.MILLISECONDS);
     }
 
-    private ScheduledFuture<?> scheduleGatheringTask(Integer frequencyPeriodInMillis) {
+    private ScheduledFuture<?> scheduleGatheringTask(ElectronicDevice device, List<List<String>> metrics,
+                                                     Integer frequencyPeriodInMillis) {
         return executorService.scheduleAtFixedRate(
-                new MetricsCollector(metricsQueue),
+                new MetricsCollector(device, metrics, metricsQueue),
                 0,
                 frequencyPeriodInMillis,
                 TimeUnit.MILLISECONDS);

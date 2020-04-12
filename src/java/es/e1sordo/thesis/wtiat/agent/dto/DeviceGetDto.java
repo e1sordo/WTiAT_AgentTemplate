@@ -12,6 +12,7 @@ public class DeviceGetDto {
     private Integer batchSendingFrequencyInMillis;
     private List<String> connectionValues;
     private List<List<String>> metrics;
+    private List<String> metricTypes;
 
     public String getId() {
         return id;
@@ -69,6 +70,14 @@ public class DeviceGetDto {
         this.metrics = metrics;
     }
 
+    public List<String> getMetricTypes() {
+        return metricTypes;
+    }
+
+    public void setMetricTypes(List<String> metricTypes) {
+        this.metricTypes = metricTypes;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -80,14 +89,15 @@ public class DeviceGetDto {
                 getGatheringFrequencyInMillis().equals(that.getGatheringFrequencyInMillis()) &&
                 getBatchSendingFrequencyInMillis().equals(that.getBatchSendingFrequencyInMillis()) &&
                 Objects.equals(getConnectionValues(), that.getConnectionValues()) &&
-                Objects.equals(getMetrics(), that.getMetrics());
+                Objects.equals(getMetrics(), that.getMetrics()) &&
+                Objects.equals(getMetricTypes(), that.getMetricTypes());
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(
                 getId(), getName(), getConnectorName(), getGatheringFrequencyInMillis(),
-                getBatchSendingFrequencyInMillis(), getConnectionValues(), getMetrics()
+                getBatchSendingFrequencyInMillis(), getConnectionValues(), getMetrics(), getMetricTypes()
         );
     }
 }
