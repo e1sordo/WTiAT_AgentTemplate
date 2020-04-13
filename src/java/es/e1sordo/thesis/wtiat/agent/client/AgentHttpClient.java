@@ -6,6 +6,7 @@ import es.e1sordo.thesis.wtiat.agent.configuration.GatewayProperties;
 import es.e1sordo.thesis.wtiat.agent.dto.AgentGetDto;
 import es.e1sordo.thesis.wtiat.agent.dto.AgentPostDto;
 import es.e1sordo.thesis.wtiat.agent.model.GatewayInfo;
+import es.e1sordo.thesis.wtiat.agent.model.TimestampMetric;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,7 +22,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 
 public class AgentHttpClient {
 
@@ -71,7 +71,7 @@ public class AgentHttpClient {
 
     }
 
-    public AgentGetDto registerAgent(AgentPostDto body) {
+    public AgentGetDto pingAgent(AgentPostDto body) {
         var gatewayInfo = GatewayProperties.getActualData();
 
         logger.debug("Protocol: " + gatewayInfo.getProtocol());
@@ -94,13 +94,12 @@ public class AgentHttpClient {
             logger.info("Response: \n{}", responseBody);
             return gson.fromJson(responseBody, AgentGetDto.class);
         } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
-            return null; // todo: нельзя возвращать null
+            logger.error("Failed to send request", e);
+            return null;
         }
     }
 
-
-    public boolean loadMetrics(Collection<Map<String, List<Object>>> body) {
+    public boolean loadMetrics(Collection<TimestampMetric> body, String deviceId) {
         var gatewayInfo = GatewayProperties.getActualData();
 
         logger.debug("Protocol: " + gatewayInfo.getProtocol());
@@ -113,13 +112,13 @@ public class AgentHttpClient {
         HttpRequest request = HttpRequest.newBuilder()
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .header("Content-Type", "application/json")
-                .uri(URI.create(String.format("%s://%s:%s/rest/metrics/load",
-                        gatewayInfo.getProtocol(), gatewayInfo.getHost(), gatewayInfo.getPort())))
+                .uri(URI.create(String.format("%s://%s:%s/rest/metrics/load?deviceId=%s",
+                        gatewayInfo.getProtocol(), gatewayInfo.getHost(), gatewayInfo.getPort(), deviceId)))
                 .build();
 
         try {
-            httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            return true;
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() < 400;
         } catch (IOException | InterruptedException e) {
             logger.error("Load metrics failed", e);
             return false;

@@ -4,6 +4,7 @@ import es.e1sordo.thesis.wtiat.agent.client.AgentHttpClient;
 import es.e1sordo.thesis.wtiat.agent.dto.AgentPostDto;
 import es.e1sordo.thesis.wtiat.agent.dto.DeviceGetDto;
 import es.e1sordo.thesis.wtiat.agent.exceptions.TerminateException;
+import es.e1sordo.thesis.wtiat.agent.model.TimestampMetric;
 import es.e1sordo.thesis.wtiat.agent.threads.MetricsBatchSender;
 import es.e1sordo.thesis.wtiat.agent.threads.MetricsCollector;
 import es.e1sordo.thesis.wtiat.agent.util.ConnectorLoader;
@@ -16,7 +17,6 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.*;
 
@@ -26,18 +26,20 @@ public class Agent {
 
     final Logger logger = LoggerFactory.getLogger(Agent.class);
 
+    private int retryCount = 0;
+
     private String name;
     private String id;
     private DeviceGetDto assignedDevice;
-    private String currentLoadedConnectorName;
-    private ElectronicDevice device;
 
     private AgentHttpClient client;
     private ScheduledExecutorService executorService;
     private ScheduledFuture<?> scheduledGatheringFuture;
     private ScheduledFuture<?> scheduledBatchFuture;
 
-    private ConcurrentLinkedQueue<Map<String, List<Object>>> metricsQueue;
+    private String currentLoadedConnectorName;
+    private ElectronicDevice device;
+    private ConcurrentLinkedQueue<TimestampMetric> metricsQueue;
 
     private boolean isRegistered;
 
@@ -78,9 +80,22 @@ public class Agent {
         registerBody.setIp(SystemInfoReceiver.getSystemIpAddress());
         registerBody.setPid((int) ProcessHandle.current().pid());
 
-        var response = client.registerAgent(registerBody);
+        var response = client.pingAgent(registerBody);
 
         isRegistered = true;
+
+        if (response == null) {
+            retryCount++;
+            logger.error("Failed to send heartbeat status. Number of unsuccessful attempts in a row: {}", retryCount);
+            if (retryCount >= 5) {
+                logger.error("The number of unsuccessful attempts in a row exceeded 5 and the agent process will be stopped");
+                throw new TerminateException("Server is not responding.");
+            }
+            return;
+        } else {
+            retryCount = 0;
+        }
+
         name = response.getName();
 
         final var idFromDb = response.getId();
@@ -147,7 +162,7 @@ public class Agent {
 
     private ScheduledFuture<?> scheduleBatchTask(Integer frequencyPeriodInMillis) {
         return executorService.scheduleAtFixedRate(
-                new MetricsBatchSender(client, metricsQueue),
+                new MetricsBatchSender(client, assignedDevice.getId(), metricsQueue),
                 frequencyPeriodInMillis,
                 frequencyPeriodInMillis,
                 TimeUnit.MILLISECONDS);
