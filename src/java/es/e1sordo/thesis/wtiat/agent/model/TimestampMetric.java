@@ -1,15 +1,13 @@
 package es.e1sordo.thesis.wtiat.agent.model;
 
-import java.util.List;
-
 public class TimestampMetric {
 
     private long timestamp;
-    private List<Object> metrics;
+    private Object value;
 
-    public TimestampMetric(long timestamp, List<Object> metrics) {
+    public TimestampMetric(long timestamp, Object value) {
         this.timestamp = timestamp;
-        this.metrics = metrics;
+        this.value = value;
     }
 
     public long getTimestamp() {
@@ -20,11 +18,11 @@ public class TimestampMetric {
         this.timestamp = timestamp;
     }
 
-    public List<Object> getMetrics() {
-        return metrics;
+    public Object getValue() {
+        return value;
     }
 
-    public void setMetrics(List<Object> metrics) {
-        this.metrics = metrics;
+    public void setValue(Object value) {
+        this.value = value;
     }
 }

@@ -99,7 +99,7 @@ public class AgentHttpClient {
         }
     }
 
-    public boolean loadMetrics(Collection<TimestampMetric> body, String deviceId) {
+    public boolean loadMetrics(Collection<List<TimestampMetric>> body, String deviceId) {
         var gatewayInfo = GatewayProperties.getActualData();
 
         logger.debug("Protocol: " + gatewayInfo.getProtocol());

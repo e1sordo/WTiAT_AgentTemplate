@@ -39,7 +39,7 @@ public class Agent {
 
     private String currentLoadedConnectorName;
     private ElectronicDevice device;
-    private ConcurrentLinkedQueue<TimestampMetric> metricsQueue;
+    private ConcurrentLinkedQueue<List<TimestampMetric>> metricsQueue;
 
     private boolean isRegistered;
 
@@ -112,14 +112,16 @@ public class Agent {
             cancelFutures(scheduledGatheringFuture, scheduledBatchFuture);
 
             if (assignedDevice != null) {
-                if (!Objects.equals(this.currentLoadedConnectorName, assignedDevice.getConnectorName())) {
-                    logger.info("Connector were changed since now");
-                    this.currentLoadedConnectorName = assignedDevice.getConnectorName();
-                }
 
-                if (currentLoadedConnectorName != null) {
-                    final var connectorJarFile = client.downloadConnector(currentLoadedConnectorName);
-                    device = loadDeviceConnector(connectorJarFile, assignedDevice.getConnectionValues());
+                final String newConnectorName = assignedDevice.getConnectorName();
+                if (newConnectorName != null) {
+                    if (!Objects.equals(this.currentLoadedConnectorName, newConnectorName)) {
+                        logger.info("Connector were changed since now");
+                        this.currentLoadedConnectorName = newConnectorName;
+
+                        final var connectorJarFile = client.downloadConnector(currentLoadedConnectorName);
+                        device = loadDeviceConnector(connectorJarFile, assignedDevice.getConnectionValues());
+                    }
                 }
 
                 if (device != null) {
